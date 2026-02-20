@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: paradigm-sys-1
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: openai/gpt-5.2
+      - key: OPENROUTER_TIMEOUT_MS
+        value: "3800"
+      - key: OPENROUTER_CONNECT_TIMEOUT_MS
+        value: "1500"
+      - key: OPENROUTER_MAX_TOKENS
+        value: "220"
