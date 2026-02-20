@@ -110,7 +110,7 @@ public class MappingServer {
             return;
         }
         String reqPath = exchange.getRequestURI().getPath();
-        if (reqPath == null || reqPath.isBlank() || "/".equals(reqPath)) {
+        if (reqPath == null || reqPath.isBlank() || "/".equals(reqPath) || "/index.html".equals(reqPath)) {
             writeStatic(exchange, "standalone/web/index.html", "text/html; charset=utf-8");
             return;
         }
