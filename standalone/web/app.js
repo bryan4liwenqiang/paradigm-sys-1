@@ -4,6 +4,7 @@ const ids = {
   status: document.getElementById("status"),
   sessionMeta: document.getElementById("sessionMeta"),
   stageStepsTitle: document.getElementById("stageStepsTitle"),
+  chatTitle: document.getElementById("chatTitle"),
   stageCatalog: document.getElementById("stageCatalog"),
   reqSteps: document.getElementById("reqSteps"),
   chatBox: document.getElementById("chatBox"),
@@ -32,6 +33,7 @@ let lastRecommendedStage = null;
 let selectedViewStage = null;
 let lastCurrentStage = null;
 const STORAGE_KEY = "sdlc_ui_state_v1";
+const MESSAGE_REQUEST_TIMEOUT_MS = 30000;
 
 ids.startBtn.addEventListener("click", async () => {
   await startSession();
@@ -102,7 +104,7 @@ async function sendMessage() {
   const pendingNode = appendMessage("assistant", "正在分析中（方法论匹配 + AI追问）...", true);
   setStatus("正在生成反馈...", false, false);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), MESSAGE_REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(`/api/v1/sessions/${currentSession.sessionId}/message`, {
       method: "POST",
@@ -110,7 +112,7 @@ async function sendMessage() {
       body: JSON.stringify({ message: msg }),
       signal: controller.signal
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "发送失败");
     currentSession = data;
     renderSession(data);
@@ -120,10 +122,27 @@ async function sendMessage() {
     if (pendingNode && pendingNode.parentNode) {
       pendingNode.parentNode.removeChild(pendingNode);
     }
-    setStatus("发送失败或超时，请重试。", false, true);
+    if (err?.name === "AbortError") {
+      const resumed = await resumeSession(currentSession.sessionId);
+      if (resumed) {
+        setStatus("响应较慢，已自动同步最新结果。", true, false);
+      } else {
+        setStatus("响应超时，请稍后重试。", false, true);
+      }
+    } else {
+      setStatus("发送失败: " + (err.message || "未知错误"), false, true);
+    }
   } finally {
     clearTimeout(timer);
     ids.sendBtn.disabled = false;
+  }
+}
+
+async function safeJson(res) {
+  try {
+    return await res.json();
+  } catch (_) {
+    return {};
   }
 }
 
@@ -135,6 +154,7 @@ function renderSession(data) {
     selectedViewStage = null;
   }
   ids.sessionMeta.textContent = `会话ID: ${data.sessionId} | 当前阶段: ${data.currentStageName || data.currentStage} | 互动方式: ${data.currentStageInteraction || "-"}`;
+  updateChatTitle(data.currentStageName || data.currentStage);
   const viewStage = selectedViewStage || data.currentStage;
   const stageMeta = (data.stages || []).find(s => s.code === viewStage) || {};
   ids.stageStepsTitle.textContent = `${stageMeta.name || data.currentStageName || data.currentStage}步骤（${stageMeta.interactionStyle || data.currentStageInteraction || "通用互动"}）`;
@@ -151,6 +171,11 @@ function renderSession(data) {
   } else if (selectedViewStage) {
     updateViewingStageMeta(selectedViewStage, data.currentStage);
   }
+}
+
+function updateChatTitle(currentStageName) {
+  const stageName = currentStageName || "当前阶段";
+  ids.chatTitle.textContent = `${stageName}互动`;
 }
 
 function renderStages(stages) {
@@ -388,6 +413,7 @@ function setStatus(text, ok, err) {
 async function bootstrap() {
   loadDefaults();
   clearResults();
+  updateChatTitle(null);
   const saved = restoreState();
   if (!saved) return;
   applyFormState(saved.form);
