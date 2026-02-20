@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SDLC 智能需求平台</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>SDLC 智能需求平台</h1>
+    <p>业务人员输入诉求后，系统通过大模型互动澄清需求，并按 SDLC 8 阶段逐步推进。</p>
+  </header>
+
+  <main class="app-shell">
+    <section class="work-grid">
+      <div class="left-column">
+        <aside class="panel side-panel">
+          <h2>SDLC 8 阶段</h2>
+          <div id="stageCatalog" class="stage-catalog"></div>
+        </aside>
+        <section class="panel">
+          <h2 id="stageStepsTitle">当前阶段步骤</h2>
+          <div id="reqSteps" class="steps"></div>
+        </section>
+      </div>
+
+      <div class="right-column">
+        <section class="panel startup">
+          <h2>启动会话</h2>
+          <div class="start-grid">
+            <label class="span2">业务诉求
+              <textarea id="businessRequest" rows="4" placeholder="例如：构建一个合同审批系统，支持多级审批、移动端与审计追踪。"></textarea>
+            </label>
+            <label>行业
+              <input type="text" id="domain" value="finance" placeholder="finance" />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="startBtn">开始需求澄清</button>
+          </div>
+          <p id="status" class="status">请先输入业务诉求并开始会话。</p>
+          <p id="sessionMeta" class="meta"></p>
+        </section>
+
+        <section class="panel">
+          <h2>需求互动</h2>
+          <div id="chatBox" class="chat-box"></div>
+          <form id="chatForm" class="chat-form">
+            <input id="chatInput" type="text" placeholder="输入你的补充信息，例如：审批链是申请人-部门经理-法务-财务..." />
+            <button type="submit" id="sendBtn">发送</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>当前阶段方法推荐</h2>
+          <div class="actions">
+            <button id="recommendBtn">基于上下文生成推荐</button>
+            <button id="followCurrentBtn" class="secondary">跟随当前阶段</button>
+          </div>
+          <p id="viewingStageMeta" class="meta">查看阶段：-</p>
+          <div class="result-grid">
+            <article><h3>范式</h3><ul id="paradigms"></ul></article>
+            <article><h3>元方法论</h3><ul id="metas"></ul></article>
+            <article><h3>方法论</h3><ul id="methodologies"></ul></article>
+            <article><h3>方法</h3><ul id="methods"></ul></article>
+          </div>
+          <div class="trace-grid">
+            <article><h3>命中规则</h3><ul id="appliedRules"></ul></article>
+            <article><h3>被过滤规则</h3><ul id="droppedRules"></ul></article>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

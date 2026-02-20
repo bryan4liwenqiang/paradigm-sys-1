@@ -1,0 +1,4 @@
+standalone/.env
+standalone/data/
+*.log
+*.tmp
