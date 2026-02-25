@@ -447,6 +447,19 @@ public class MappingServer {
         return paradigm + " / " + methodology + " / " + method;
     }
 
+    private static String publicBaseUrl() {
+        String url = System.getenv("RENDER_EXTERNAL_URL");
+        if (url != null && !url.isBlank()) {
+            return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        }
+        url = System.getenv("PUBLIC_URL");
+        if (url != null && !url.isBlank()) {
+            return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        }
+        int port = Integer.parseInt(System.getenv().getOrDefault("SERVER_PORT", "8080"));
+        return "http://localhost:" + port;
+    }
+
     private static String callOpenRouter(String systemPrompt, String userPrompt) {
         String apiKey = System.getenv("OPENROUTER_API_KEY");
         if (apiKey == null || apiKey.isBlank()) {
@@ -470,7 +483,7 @@ public class MappingServer {
                     .timeout(Duration.ofMillis(timeoutMs))
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
-                    .header("HTTP-Referer", "http://localhost:8080")
+                    .header("HTTP-Referer", publicBaseUrl())
                     .header("X-Title", "paradigm-sys")
                     .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                     .build();
