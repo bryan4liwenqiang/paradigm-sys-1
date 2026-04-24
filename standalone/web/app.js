@@ -1,6 +1,26 @@
 const ids = {
   businessRequest: document.getElementById("businessRequest"),
   domain: document.getElementById("domain"),
+  domainSelect: document.getElementById("domainSelect"),
+  domainMode: document.getElementById("domainMode"),
+  complianceLevel: document.getElementById("complianceLevel"),
+  complianceLevelSelect: document.getElementById("complianceLevelSelect"),
+  complianceLevelMode: document.getElementById("complianceLevelMode"),
+  timelineLevel: document.getElementById("timelineLevel"),
+  timelineLevelSelect: document.getElementById("timelineLevelSelect"),
+  timelineLevelMode: document.getElementById("timelineLevelMode"),
+  businessGoal: document.getElementById("businessGoal"),
+  businessGoalSelect: document.getElementById("businessGoalSelect"),
+  businessGoalMode: document.getElementById("businessGoalMode"),
+  successKpi: document.getElementById("successKpi"),
+  successKpiSelect: document.getElementById("successKpiSelect"),
+  successKpiMode: document.getElementById("successKpiMode"),
+  stakeholders: document.getElementById("stakeholders"),
+  stakeholdersSelect: document.getElementById("stakeholdersSelect"),
+  stakeholdersMode: document.getElementById("stakeholdersMode"),
+  constraints: document.getElementById("constraints"),
+  constraintsSelect: document.getElementById("constraintsSelect"),
+  constraintsMode: document.getElementById("constraintsMode"),
   status: document.getElementById("status"),
   sessionMeta: document.getElementById("sessionMeta"),
   stageStepsTitle: document.getElementById("stageStepsTitle"),
@@ -21,12 +41,72 @@ const ids = {
   methods: document.getElementById("methods"),
   appliedRules: document.getElementById("appliedRules"),
   droppedRules: document.getElementById("droppedRules")
+  ,
+  stageExplainability: document.getElementById("stageExplainability")
 };
 
 const defaults = {
   businessRequest: "构建一个合同审批系统，支持多级审批、移动端与审计追踪。",
-  domain: "finance"
+  domain: "finance",
+  complianceLevel: "L2",
+  timelineLevel: "normal",
+  businessGoal: "",
+  successKpi: "",
+  stakeholders: "",
+  constraints: ""
 };
+
+const comboFieldConfigs = [
+  {
+    key: "domain",
+    selectId: "domainSelect",
+    inputId: "domain",
+    modeId: "domainMode",
+    options: ["finance", "retail", "manufacturing", "healthcare", "education"]
+  },
+  {
+    key: "complianceLevel",
+    selectId: "complianceLevelSelect",
+    inputId: "complianceLevel",
+    modeId: "complianceLevelMode",
+    options: ["L1", "L2", "L3"]
+  },
+  {
+    key: "timelineLevel",
+    selectId: "timelineLevelSelect",
+    inputId: "timelineLevel",
+    modeId: "timelineLevelMode",
+    options: ["tight", "normal", "relaxed"]
+  },
+  {
+    key: "businessGoal",
+    selectId: "businessGoalSelect",
+    inputId: "businessGoal",
+    modeId: "businessGoalMode",
+    options: ["审批效率提升", "库存准确率提升", "人力成本下降", "合规审计通过率提升"]
+  },
+  {
+    key: "successKpi",
+    selectId: "successKpiSelect",
+    inputId: "successKpi",
+    modeId: "successKpiMode",
+    options: ["平均处理时长 < 24h", "错误率 < 1%", "自动化率 > 70%", "一次通过率 > 95%"]
+  },
+  {
+    key: "stakeholders",
+    selectId: "stakeholdersSelect",
+    inputId: "stakeholders",
+    modeId: "stakeholdersMode",
+    options: ["申请人,审批人,财务", "仓管,运营,客服", "项目经理,开发,测试", "法务,合规,审计"]
+  },
+  {
+    key: "constraints",
+    selectId: "constraintsSelect",
+    inputId: "constraints",
+    modeId: "constraintsMode",
+    options: ["预算固定", "上线窗口受限", "必须满足审计要求", "只能私有化部署"]
+  }
+];
 
 let currentSession = null;
 let lastRecommendedStage = null;
@@ -57,13 +137,24 @@ bindDraftPersistence();
 function loadDefaults() {
   ids.businessRequest.value = defaults.businessRequest;
   ids.domain.value = defaults.domain;
+  ids.complianceLevel.value = defaults.complianceLevel;
+  ids.timelineLevel.value = defaults.timelineLevel;
+  ids.businessGoal.value = defaults.businessGoal;
+  ids.successKpi.value = defaults.successKpi;
+  ids.stakeholders.value = defaults.stakeholders;
+  ids.constraints.value = defaults.constraints;
+  initComboFields();
+  for (const cfg of comboFieldConfigs) {
+    const modeEl = ids[cfg.modeId];
+    if (modeEl) {
+      modeEl.value = "select";
+    }
+    syncComboFieldMode(cfg);
+  }
 }
 
 async function startSession() {
-  const payload = {
-    businessRequest: ids.businessRequest.value.trim(),
-    domain: ids.domain.value
-  };
+  const payload = buildSessionPayload();
   if (!payload.businessRequest) {
     setStatus("请先输入业务诉求", false, true);
     return;
@@ -89,6 +180,106 @@ async function startSession() {
   }
 }
 
+function initComboFields() {
+  for (const cfg of comboFieldConfigs) {
+    const selectEl = ids[cfg.selectId];
+    const inputEl = ids[cfg.inputId];
+    const modeEl = ids[cfg.modeId];
+    if (!selectEl || !inputEl || !modeEl) {
+      continue;
+    }
+    if (!selectEl.dataset.initialized) {
+      renderSelectOptions(selectEl, cfg.options);
+      selectEl.dataset.initialized = "1";
+    }
+    if (inputEl.value && !cfg.options.includes(inputEl.value)) {
+      modeEl.value = "manual";
+    }
+    if (!inputEl.value && cfg.options.length > 0) {
+      inputEl.value = cfg.options[0];
+    }
+    const normalized = normalizeComboValue(modeEl.value, inputEl.value, cfg.options);
+    inputEl.value = normalized.value;
+    modeEl.value = normalized.mode;
+    if (normalized.mode === "select") {
+      selectEl.value = normalized.value;
+    }
+    modeEl.addEventListener("change", () => {
+      syncComboFieldMode(cfg);
+      saveState();
+    });
+    selectEl.addEventListener("change", () => {
+      if (modeEl.value === "select") {
+        inputEl.value = selectEl.value;
+      }
+      saveState();
+    });
+  }
+}
+
+function renderSelectOptions(selectEl, options) {
+  selectEl.innerHTML = "";
+  for (const item of options) {
+    const option = document.createElement("option");
+    option.value = item;
+    option.textContent = item;
+    selectEl.appendChild(option);
+  }
+}
+
+function normalizeComboValue(mode, value, options) {
+  const trimmed = (value || "").trim();
+  if (mode === "manual") {
+    return { mode: "manual", value: trimmed };
+  }
+  if (trimmed && options.includes(trimmed)) {
+    return { mode: "select", value: trimmed };
+  }
+  if (!trimmed && options.length > 0) {
+    return { mode: "select", value: options[0] };
+  }
+  return { mode: "manual", value: trimmed };
+}
+
+function syncComboFieldMode(cfg) {
+  const selectEl = ids[cfg.selectId];
+  const inputEl = ids[cfg.inputId];
+  const modeEl = ids[cfg.modeId];
+  if (!selectEl || !inputEl || !modeEl) {
+    return;
+  }
+  const isSelect = modeEl.value === "select";
+  selectEl.disabled = !isSelect;
+  inputEl.readOnly = isSelect;
+  if (isSelect) {
+    if (!selectEl.value && cfg.options.length > 0) {
+      selectEl.value = cfg.options[0];
+    }
+    inputEl.value = selectEl.value;
+  }
+}
+
+function buildSessionPayload() {
+  const payload = {
+    businessRequest: ids.businessRequest.value.trim()
+  };
+  for (const cfg of comboFieldConfigs) {
+    const inputEl = ids[cfg.inputId];
+    const modeEl = ids[cfg.modeId];
+    const selectEl = ids[cfg.selectId];
+    if (!inputEl || !modeEl || !selectEl) {
+      continue;
+    }
+    syncComboFieldMode(cfg);
+    const value = inputEl.value.trim();
+    if (value) {
+      payload[cfg.key] = value;
+      payload[`${cfg.key}InputMode`] = modeEl.value;
+    }
+  }
+  return payload;
+}
+
 async function sendMessage() {
   if (!currentSession?.sessionId) {
     setStatus("请先启动会话", false, true);
@@ -105,6 +296,8 @@ async function sendMessage() {
   setStatus("正在生成反馈...", false, false);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MESSAGE_REQUEST_TIMEOUT_MS);
+  const prevStage = currentSession?.currentStage || null;
+  const prevIdx = currentSession?.currentStageWorkflow?.currentStepIdx ?? -1;
   try {
     const res = await fetch(`/api/v1/sessions/${currentSession.sessionId}/message`, {
       method: "POST",
@@ -117,7 +310,13 @@ async function sendMessage() {
     currentSession = data;
     renderSession(data);
     saveState();
-    setStatus("已生成方法论反馈与下一步问题。", true, false);
+    const unchangedStep = prevStage && prevStage === data.currentStage
+      && prevIdx === (data.currentStageWorkflow?.currentStepIdx ?? -1);
+    if (unchangedStep) {
+      setStatus("当前信息仍不足，系统已给出补充问题，请继续完善。", false, false);
+    } else {
+      setStatus("已生成方法论反馈与下一步问题。", true, false);
+    }
   } catch (err) {
     if (pendingNode && pendingNode.parentNode) {
       pendingNode.parentNode.removeChild(pendingNode);
@@ -161,6 +360,7 @@ function renderSession(data) {
   renderStages(data.stages || []);
   const wf = data.stageDetails?.[viewStage]?.workflow || data.currentStageWorkflow;
   renderReqSteps(wf?.steps || []);
+  renderStageExplainability(data, viewStage);
   renderMessages(data.messages || []);
   saveState();
   if (prevStage && prevStage !== data.currentStage) {
@@ -215,6 +415,26 @@ function renderReqSteps(steps) {
     div.innerHTML = `<div class="step-title">${s.name} (${s.status})</div><div>${escapeHtml(s.question)}</div>${answer}`;
     ids.reqSteps.appendChild(div);
   }
+}
+
+function renderStageExplainability(data, stageCode) {
+  const byStage = data.stageDetails?.[stageCode]?.explainability;
+  const current = data.currentStageExplainability;
+  const exp = byStage || (stageCode === data.currentStage ? current : null);
+  if (!exp) {
+    ids.stageExplainability.textContent = "暂无阶段解释信息";
+    return;
+  }
+  const facts = (exp.confirmedFacts || []).slice(0, 3);
+  const gaps = exp.keyGaps || [];
+  const unresolved = exp.unresolvedItems || [];
+  ids.stageExplainability.innerHTML = `
+    <div><strong>阶段目标：</strong>${escapeHtml(exp.stageGoal || "-")}</div>
+    <div><strong>已确认事实：</strong>${facts.length ? facts.map(escapeHtml).join("；") : "暂无"}</div>
+    <div><strong>关键缺口：</strong>${gaps.length ? gaps.map(escapeHtml).join("、") : "暂无"}</div>
+    <div><strong>下一步建议：</strong>${escapeHtml(exp.nextAction || "-")}</div>
+    <div><strong>未决项：</strong>${unresolved.length ? unresolved.map(escapeHtml).join("、") : "暂无"}</div>
+  `;
 }
 
 function renderMessages(messages) {
@@ -317,11 +537,25 @@ function clearResults() {
 }
 
 function snapshotState() {
+  const comboModes = {};
+  for (const cfg of comboFieldConfigs) {
+    const modeEl = ids[cfg.modeId];
+    if (modeEl) {
+      comboModes[cfg.key] = modeEl.value;
+    }
+  }
   return {
     form: {
       businessRequest: ids.businessRequest.value,
       domain: ids.domain.value,
-      chatInput: ids.chatInput.value
+      complianceLevel: ids.complianceLevel.value,
+      timelineLevel: ids.timelineLevel.value,
+      businessGoal: ids.businessGoal.value,
+      successKpi: ids.successKpi.value,
+      stakeholders: ids.stakeholders.value,
+      constraints: ids.constraints.value,
+      chatInput: ids.chatInput.value,
+      comboModes
     },
     sessionId: currentSession?.sessionId || null,
     lastRecommendedStage,
@@ -359,7 +593,21 @@ function applyFormState(form) {
   if (!form) return;
   ids.businessRequest.value = form.businessRequest ?? ids.businessRequest.value;
   ids.domain.value = form.domain ?? ids.domain.value;
+  ids.complianceLevel.value = form.complianceLevel ?? ids.complianceLevel.value;
+  ids.timelineLevel.value = form.timelineLevel ?? ids.timelineLevel.value;
+  ids.businessGoal.value = form.businessGoal ?? "";
+  ids.successKpi.value = form.successKpi ?? "";
+  ids.stakeholders.value = form.stakeholders ?? "";
+  ids.constraints.value = form.constraints ?? "";
   ids.chatInput.value = form.chatInput ?? "";
+  const comboModes = form.comboModes || {};
+  for (const cfg of comboFieldConfigs) {
+    const modeEl = ids[cfg.modeId];
+    if (modeEl && comboModes[cfg.key]) {
+      modeEl.value = comboModes[cfg.key];
+    }
+    syncComboFieldMode(cfg);
+  }
 }
 
 function applyRecommendationState(rec) {
@@ -381,9 +629,26 @@ function updateViewingStageMeta(viewingStage, currentStage) {
 
 function bindDraftPersistence() {
   const fields = [
-    ids.businessRequest, ids.domain, ids.chatInput
+    ids.businessRequest,
+    ids.domain,
+    ids.complianceLevel,
+    ids.timelineLevel,
+    ids.businessGoal,
+    ids.successKpi,
+    ids.stakeholders,
+    ids.constraints,
+    ids.chatInput
   ];
+  for (const cfg of comboFieldConfigs) {
+    if (ids[cfg.selectId]) {
+      fields.push(ids[cfg.selectId]);
+    }
+    if (ids[cfg.modeId]) {
+      fields.push(ids[cfg.modeId]);
+    }
+  }
   for (const el of fields) {
+    if (!el) continue;
     el.addEventListener("input", saveState);
     el.addEventListener("change", saveState);
   }

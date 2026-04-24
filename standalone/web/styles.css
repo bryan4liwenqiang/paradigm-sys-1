@@ -1,3 +1,13 @@
+.combo-input {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+}
+
+.combo-input select,
+.combo-input input {
+  width: 100%;
+}
 :root {
   color-scheme: light dark;
   --bg: #0b1020;

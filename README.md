@@ -73,6 +73,13 @@ This repository is public and can be deployed directly from GitHub.
    - `OPENROUTER_API_KEY` (required)
 5. Deploy and open the generated public URL.
 
+To update `OPENROUTER_API_KEY` on Render from the command line (e.g. to `zzzzzzzzzz`): create an API key at [Render API Keys](https://dashboard.render.com/u/settings#api-keys), then run:
+
+```bash
+export RENDER_API_KEY="rnd_xxx"
+./scripts/update-render-openrouter-key.sh zzzzzzzzzz
+```
+
 Local Docker run (optional):
 
 ```bash

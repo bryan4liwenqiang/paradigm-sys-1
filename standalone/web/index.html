@@ -33,7 +33,74 @@
               <textarea id="businessRequest" rows="4" placeholder="例如：构建一个合同审批系统，支持多级审批、移动端与审计追踪。"></textarea>
             </label>
             <label>行业
-              <input type="text" id="domain" value="finance" placeholder="finance" />
+              <div class="combo-input">
+                <select id="domainSelect"></select>
+                <input type="text" id="domain" value="finance" placeholder="finance" />
+                <select id="domainMode">
+                  <option value="select">下拉</option>
+                  <option value="manual">手动</option>
+                </select>
+              </div>
+            </label>
+            <label>合规级别
+              <div class="combo-input">
+                <select id="complianceLevelSelect"></select>
+                <input type="text" id="complianceLevel" placeholder="如：L3" />
+                <select id="complianceLevelMode">
+                  <option value="select">下拉</option>
+                  <option value="manual">手动</option>
+                </select>
+              </div>
+            </label>
+            <label>时限等级
+              <div class="combo-input">
+                <select id="timelineLevelSelect"></select>
+                <input type="text" id="timelineLevel" placeholder="如：tight" />
+                <select id="timelineLevelMode">
+                  <option value="select">下拉</option>
+                  <option value="manual">手动</option>
+                </select>
+              </div>
+            </label>
+            <label>业务目标（可选）
+              <div class="combo-input">
+                <select id="businessGoalSelect"></select>
+                <input type="text" id="businessGoal" placeholder="例如：将审批周期缩短 40%" />
+                <select id="businessGoalMode">
+                  <option value="select">下拉</option>
+                  <option value="manual">手动</option>
+                </select>
+              </div>
+            </label>
+            <label>成功指标（可选）
+              <div class="combo-input">
+                <select id="successKpiSelect"></select>
+                <input type="text" id="successKpi" placeholder="例如：平均审批时长 <= 24h" />
+                <select id="successKpiMode">
+                  <option value="select">下拉</option>
+                  <option value="manual">手动</option>
+                </select>
+              </div>
+            </label>
+            <label>关键角色（可选）
+              <div class="combo-input">
+                <select id="stakeholdersSelect"></select>
+                <input type="text" id="stakeholders" placeholder="例如：申请人、法务、财务" />
+                <select id="stakeholdersMode">
+                  <option value="select">下拉</option>
+                  <option value="manual">手动</option>
+                </select>
+              </div>
+            </label>
+            <label>关键约束（可选）
+              <div class="combo-input">
+                <select id="constraintsSelect"></select>
+                <input type="text" id="constraints" placeholder="例如：预算固定、必须满足审计要求" />
+                <select id="constraintsMode">
+                  <option value="select">下拉</option>
+                  <option value="manual">手动</option>
+                </select>
+              </div>
             </label>
           </div>
           <div class="actions">
@@ -50,6 +117,11 @@
             <input id="chatInput" type="text" placeholder="输入你的补充信息，例如：审批链是申请人-部门经理-法务-财务..." />
             <button type="submit" id="sendBtn">发送</button>
           </form>
+        </section>
+
+        <section class="panel">
+          <h2>阶段解释信息</h2>
+          <div id="stageExplainability" class="meta">暂无阶段解释信息</div>
         </section>
 
         <section class="panel">

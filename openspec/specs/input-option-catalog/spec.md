@@ -1,0 +1,26 @@
+# input-option-catalog Specification
+
+## Purpose
+TBD - created by archiving change input-combobox. Update Purpose after archive.
+## Requirements
+### Requirement: 输入字段选项目录
+系统 MUST 为关键输入字段定义预置选项目录，并支持按字段独立维护默认值与候选值。
+
+#### Scenario: 字段加载预置选项
+- **WHEN** 页面初始化关键输入字段
+- **THEN** 系统应加载该字段对应的预置选项
+- **AND** 字段应展示默认选项或空占位提示
+
+### Requirement: 选项值与手动值统一输出
+系统 MUST 将“下拉选项值”与“手动输入值”统一映射为后端可消费的字段语义。
+
+#### Scenario: 下拉值提交
+- **WHEN** 用户以选项模式提交会话启动请求
+- **THEN** 请求中应携带标准化字段值
+- **AND** 不应因控件模式差异导致字段缺失
+
+#### Scenario: 手动值提交
+- **WHEN** 用户以手动模式提交会话启动请求
+- **THEN** 请求中应携带用户自定义字段值
+- **AND** 后端仍可按兼容规则接收该字段
+
