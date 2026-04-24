@@ -28,6 +28,11 @@ public class MappingServer {
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(Long.parseLong(System.getenv().getOrDefault("OPENROUTER_CONNECT_TIMEOUT_MS", "1500"))))
             .build();
+    private static final Map<String, Set<String>> CONTEXT_OPTION_CATALOG = Map.of(
+            "domain", Set.of("finance", "retail", "manufacturing", "healthcare", "education"),
+            "complianceLevel", Set.of("L1", "L2", "L3"),
+            "timelineLevel", Set.of("tight", "normal", "relaxed")
+    );
     private static final Map<String, SessionState> SESSIONS = new ConcurrentHashMap<>();
     private static final String SESSION_STORE_FILE = System.getenv().getOrDefault("SESSION_STORE_FILE", "standalone/data/sessions.bin");
     private static final List<StageDef> STAGE_DEFS = List.of(
@@ -41,12 +46,14 @@ public class MappingServer {
             new StageDef("operations", "运维阶段", "持续优化复盘式", "建立监控告警、故障响应与持续优化")
     );
     private static final List<ReqStepDef> REQUIREMENT_STEPS = List.of(
-            new ReqStepDef("goal", "业务目标与价值", "请描述这个系统要解决的核心业务问题，以及成功标准（例如效率提升、成本下降、合规达标）。"),
-            new ReqStepDef("users", "用户角色与场景", "请列出主要用户角色（谁在用）和关键使用场景（在什么情况下使用）。"),
-            new ReqStepDef("process", "业务流程", "请按先后顺序描述核心业务流程（输入 -> 处理 -> 输出）。"),
-            new ReqStepDef("rules", "业务规则与合规", "请补充必须遵守的业务规则、审批规则或监管合规要求。"),
-            new ReqStepDef("constraints", "非功能约束", "请说明性能、可用性、安全、部署环境、预算和时间约束。"),
-            new ReqStepDef("acceptance", "验收标准", "请给出可验收的标准（功能范围、质量指标、上线时间）。")
+            new ReqStepDef("goal", "业务目标与价值", "请描述这个系统要解决的核心业务问题，以及成功标准（例如效率提升、成本下降、合规达标）。", 16),
+            new ReqStepDef("users", "用户角色与场景", "请列出主要用户角色（谁在用）和关键使用场景（在什么情况下使用）。", 12),
+            new ReqStepDef("process", "业务流程", "请按先后顺序描述核心业务流程（输入 -> 处理 -> 输出）。", 20),
+            new ReqStepDef("rules", "业务规则与合规", "请补充必须遵守的业务规则、审批规则或监管合规要求。", 12),
+            new ReqStepDef("compliance_detail", "高合规补充", "你选择了高合规等级，请补充监管条款、审计要求、留痕周期等信息。", 20, "complianceLevel == \"L3\""),
+            new ReqStepDef("timeline_risk", "紧急时限补充", "你选择了紧急时限，请补充交付时间点、优先级取舍和可接受范围。", 20, "timelineLevel == \"tight\""),
+            new ReqStepDef("constraints", "非功能约束", "请说明性能、可用性、安全、部署环境、预算和时间约束。", 16),
+            new ReqStepDef("acceptance", "验收标准", "请给出可验收的标准（功能范围、质量指标、上线时间）。", 16)
     );
     private static final Map<String, List<ReqStepDef>> STAGE_STEP_DEFS = Map.of(
             "requirements", REQUIREMENT_STEPS,
@@ -95,6 +102,7 @@ public class MappingServer {
         server.createContext("/app.js", MappingServer::handleUi);
         server.createContext("/styles.css", MappingServer::handleUi);
         server.createContext("/health", MappingServer::handleHealth);
+        server.createContext("/health2", MappingServer::handleHealth2);
         server.createContext("/api/v1/stages", MappingServer::handleStages);
         server.createContext("/api/v1/sessions/start", MappingServer::handleStartSession);
         server.createContext("/api/v1/sessions", MappingServer::handleSessions);
@@ -130,7 +138,17 @@ public class MappingServer {
             writeJson(exchange, 405, "{\"error\":\"method_not_allowed\"}");
             return;
         }
-        writeJson(exchange, 200, "{\"status\":\"UP\"}");
+        HealthResult health = evaluateHealth();
+        writeJson(exchange, health.up ? 200 : 503, healthJson(health, false));
+    }
+
+    private static void handleHealth2(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            writeJson(exchange, 405, "{\"error\":\"method_not_allowed\"}");
+            return;
+        }
+        HealthResult health = evaluateHealth();
+        writeJson(exchange, health.up ? 200 : 503, healthJson(health, true));
     }
 
     private static void handleStages(HttpExchange exchange) throws IOException {
@@ -153,14 +171,8 @@ public class MappingServer {
             return;
         }
 
-        SessionState session = SessionState.create(businessRequest);
-        Map<String, String> ctx = session.context;
-        putIfPresent(ctx, "domain", extractString(body, "domain"));
-        putIfPresent(ctx, "complianceLevel", extractString(body, "complianceLevel"));
-        putIfPresent(ctx, "timelineLevel", extractString(body, "timelineLevel"));
-        putIfPresent(ctx, "teamMaturity", extractString(body, "teamMaturity"));
-        putIfPresent(ctx, "budgetLevel", extractString(body, "budgetLevel"));
-        putIfPresent(ctx, "projectType", extractString(body, "projectType"));
+        Map<String, String> ctx = extractSessionContext(body);
+        SessionState session = SessionState.create(businessRequest, ctx);
         SESSIONS.put(session.id, session);
         persistSessionsToDisk();
 
@@ -266,6 +278,12 @@ public class MappingServer {
             return;
         }
         ReqStepState step = workflow.steps.get(idx);
+        if (!isStepAnswerSufficient(step, userMsg)) {
+            step.answer = userMsg;
+            String followUp = buildInsufficientInfoFollowUp(session, currentStage.code, step);
+            session.messages.add(new ChatMessage("assistant", followUp, Instant.now().toString()));
+            return;
+        }
         step.status = "DONE";
         step.answer = userMsg;
         workflow.currentStepIdx++;
@@ -317,6 +335,10 @@ public class MappingServer {
         user.append("方法论引导：").append(methodologyHint).append("\n");
         if (latestUserMsg != null) {
             user.append("用户刚回复：").append(latestUserMsg).append("\n");
+        }
+        List<String> contextGaps = detectContextGaps(session.context);
+        if (!contextGaps.isEmpty()) {
+            user.append("当前缺口：").append(String.join("、", contextGaps)).append("\n");
         }
         user.append("输出格式：\n")
                 .append("1) 方法论反馈：一句话说明当前信息完整度与缺口\n")
@@ -669,6 +691,70 @@ public class MappingServer {
         return m.find() ? m.group(1) : null;
     }
 
+    private static HealthResult evaluateHealth() {
+        String failReason = System.getenv("HEALTH_FORCE_FAIL_REASON");
+        if (failReason != null && !failReason.isBlank()) {
+            System.err.println("Health check failed: " + failReason);
+            return new HealthResult(false, failReason.trim(), Instant.now().toString());
+        }
+        return new HealthResult(true, "none", Instant.now().toString());
+    }
+
+    private static String healthJson(HealthResult health, boolean fallbackProbe) {
+        return "{"
+                + "\"status\":\"" + (health.up ? "UP" : "DOWN") + "\","
+                + "\"checkedAt\":\"" + esc(health.checkedAt) + "\","
+                + "\"reason\":\"" + esc(health.reason) + "\""
+                + (fallbackProbe ? ",\"probe\":\"fallback-health2\"" : "")
+                + "}";
+    }
+
+    private static Map<String, String> extractSessionContext(String body) {
+        Map<String, String> ctx = new HashMap<>();
+        putContextValue(ctx, body, "domain");
+        putContextValue(ctx, body, "complianceLevel");
+        putContextValue(ctx, body, "timelineLevel");
+        putContextValue(ctx, body, "teamMaturity");
+        putContextValue(ctx, body, "budgetLevel");
+        putContextValue(ctx, body, "projectType");
+        putContextValue(ctx, body, "businessGoal");
+        putContextValue(ctx, body, "successKpi");
+        putContextValue(ctx, body, "stakeholders");
+        putContextValue(ctx, body, "constraints");
+        return ctx;
+    }
+
+    private static void putContextValue(Map<String, String> ctx, String body, String key) {
+        String raw = extractString(body, key);
+        String mode = extractString(body, key + "InputMode");
+        String normalized = normalizeContextValue(key, raw, mode);
+        putIfPresent(ctx, key, normalized);
+    }
+
+    private static String normalizeContextValue(String key, String value, String inputMode) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isBlank()) {
+            return null;
+        }
+        String normalized = trimmed;
+        if ("domain".equals(key)) {
+            normalized = trimmed.toLowerCase(Locale.ROOT);
+        }
+        if ("timelineLevel".equals(key)) {
+            normalized = trimmed.toLowerCase(Locale.ROOT);
+        }
+        if (CONTEXT_OPTION_CATALOG.containsKey(key) && "select".equalsIgnoreCase(inputMode)) {
+            Set<String> options = CONTEXT_OPTION_CATALOG.get(key);
+            if (!options.contains(normalized)) {
+                System.err.println("Unknown select option for key=" + key + ", value=" + normalized + ". Fallback to manual text.");
+            }
+        }
+        return normalized;
+    }
+
     private static String readBody(InputStream in) throws IOException {
         return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
@@ -773,13 +859,17 @@ public class MappingServer {
     private static String sessionJson(SessionState session) {
         StageDef currentStage = STAGE_DEFS.get(session.currentStageIdx);
         StageWorkflowState currentWorkflow = session.stageWorkflows.get(currentStage.code);
+        String currentExplainability = stageExplainabilityJson(session, currentStage.code);
         StringBuilder sb = new StringBuilder();
         sb.append("{")
                 .append("\"sessionId\":\"").append(esc(session.id)).append("\",")
                 .append("\"businessRequest\":\"").append(esc(session.businessRequest)).append("\",")
+                .append("\"contextProfile\":").append(stringMapJson(session.context)).append(",")
+                .append("\"contextGaps\":").append(stringsJson(detectContextGaps(session.context))).append(",")
                 .append("\"currentStage\":\"").append(esc(currentStage.code)).append("\",")
                 .append("\"currentStageName\":\"").append(esc(currentStage.name)).append("\",")
                 .append("\"currentStageInteraction\":\"").append(esc(currentStage.interactionStyle)).append("\",")
+                .append("\"currentStageExplainability\":").append(currentExplainability).append(",")
                 .append("\"stages\":").append(stagesJson(session)).append(",")
                 .append("\"stageDetails\":").append(allStageDetailsJson(session)).append(",")
                 .append("\"currentStageWorkflow\":").append(workflowJson(currentWorkflow)).append(",")
@@ -836,6 +926,7 @@ public class MappingServer {
                     .append("\"name\":\"").append(esc(step.name)).append("\",")
                     .append("\"question\":\"").append(esc(step.question)).append("\",")
                     .append("\"status\":\"").append(esc(step.status)).append("\",")
+                    .append("\"minAnswerLength\":").append(step.minAnswerLength).append(",")
                     .append("\"answer\":\"").append(step.answer == null ? "" : esc(step.answer)).append("\"")
                     .append("}");
         }
@@ -856,8 +947,92 @@ public class MappingServer {
             sb.append("\"").append(esc(def.code)).append("\":{")
                     .append("\"workflow\":").append(workflowJson(workflow)).append(",")
                     .append("\"summary\":\"").append(esc(summary)).append("\",")
-                    .append("\"completedAt\":\"").append(esc(completedAt)).append("\"")
+                    .append("\"completedAt\":\"").append(esc(completedAt)).append("\",")
+                    .append("\"explainability\":").append(stageExplainabilityJson(session, def.code))
                     .append("}");
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private static String stageExplainabilityJson(SessionState session, String stageCode) {
+        StageDef stageDef = findStageDef(stageCode);
+        StageWorkflowState workflow = session.stageWorkflows.get(stageCode);
+        List<String> facts = new ArrayList<>();
+        List<String> unresolved = new ArrayList<>();
+        String nextAction = "继续补充当前阶段关键问题。";
+        if (workflow != null) {
+            for (ReqStepState step : workflow.steps) {
+                if ("DONE".equals(step.status) && step.answer != null && !step.answer.isBlank()) {
+                    facts.add(step.name + "：" + step.answer);
+                } else {
+                    unresolved.add(step.name);
+                }
+            }
+            if (workflow.currentStepIdx < workflow.steps.size()) {
+                ReqStepState current = workflow.steps.get(workflow.currentStepIdx);
+                nextAction = "补充「" + current.name + "」：" + current.question;
+            }
+        }
+        List<String> gaps = detectContextGaps(session.context);
+        return "{"
+                + "\"stageGoal\":\"" + esc(stageDef.description) + "\","
+                + "\"confirmedFacts\":" + stringsJson(facts) + ","
+                + "\"keyGaps\":" + stringsJson(gaps) + ","
+                + "\"nextAction\":\"" + esc(nextAction) + "\","
+                + "\"unresolvedItems\":" + stringsJson(unresolved)
+                + "}";
+    }
+
+    private static List<String> detectContextGaps(Map<String, String> context) {
+        List<String> gaps = new ArrayList<>();
+        appendGapIfMissing(gaps, context, "businessGoal", "业务目标");
+        appendGapIfMissing(gaps, context, "successKpi", "成功指标");
+        appendGapIfMissing(gaps, context, "stakeholders", "关键角色");
+        appendGapIfMissing(gaps, context, "constraints", "关键约束");
+        appendGapIfMissing(gaps, context, "timelineLevel", "时限等级");
+        return gaps;
+    }
+
+    private static void appendGapIfMissing(List<String> gaps, Map<String, String> context, String key, String label) {
+        String v = context.get(key);
+        if (v == null || v.isBlank()) {
+            gaps.add(label);
+        }
+    }
+
+    private static boolean isStepAnswerSufficient(ReqStepState step, String userMsg) {
+        if (userMsg == null) {
+            return false;
+        }
+        String trimmed = userMsg.trim();
+        return trimmed.length() >= step.minAnswerLength;
+    }
+
+    private static String buildInsufficientInfoFollowUp(SessionState session, String stageCode, ReqStepState step) {
+        StageDef stageDef = findStageDef(stageCode);
+        List<String> gaps = detectContextGaps(session.context);
+        String gapText = gaps.isEmpty() ? "" : "\n当前全局缺口：" + String.join("、", gaps);
+        String modelResponse = callOpenRouter(
+                "你是企业需求分析顾问。用户提供信息不足，请输出一句简短反馈和1-2个补充问题。",
+                "阶段：" + stageDef.name + "\n步骤：" + step.name + "\n当前输入：" + (step.answer == null ? "" : step.answer) + "\n请围绕该步骤补齐关键信息。"
+        );
+        if (modelResponse != null && !modelResponse.isBlank()) {
+            return "当前信息不足，暂不推进到下一步骤。\n" + modelResponse + gapText;
+        }
+        return "当前信息不足，暂不推进到下一步骤。\n请补充「" + step.name + "」的关键细节：" + step.question + gapText;
+    }
+
+    private static String stringMapJson(Map<String, String> map) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            if (!first) {
+                sb.append(",");
+            }
+            first = false;
+            sb.append("\"").append(esc(entry.getKey())).append("\":")
+                    .append("\"").append(esc(entry.getValue())).append("\"");
         }
         sb.append("}");
         return sb.toString();
@@ -1107,17 +1282,22 @@ public class MappingServer {
         List<ChatMessage> messages = new ArrayList<>();
         int currentStageIdx = 0;
 
-        static SessionState create(String businessRequest) {
+        static SessionState create(String businessRequest, Map<String, String> initialContext) {
             SessionState s = new SessionState();
             s.id = "sess_" + UUID.randomUUID().toString().replace("-", "");
             s.businessRequest = businessRequest;
+            if (initialContext != null) {
+                s.context.putAll(initialContext);
+            }
             for (StageDef stage : STAGE_DEFS) {
                 List<ReqStepDef> defs = STAGE_STEP_DEFS.getOrDefault(stage.code, List.of());
                 List<ReqStepState> steps = new ArrayList<>();
-                for (int i = 0; i < defs.size(); i++) {
-                    ReqStepDef def = defs.get(i);
-                    String status = i == 0 ? "CURRENT" : "PENDING";
-                    steps.add(new ReqStepState(def.key, def.name, def.question, status));
+                for (ReqStepDef def : defs) {
+                    if (def.conditionExpr() != null && !def.conditionExpr().isBlank() && !eval(def.conditionExpr(), s.context)) {
+                        continue;
+                    }
+                    String status = steps.isEmpty() ? "CURRENT" : "PENDING";
+                    steps.add(new ReqStepState(def.key(), def.name(), def.question(), status, def.minAnswerLength()));
                 }
                 s.stageWorkflows.put(stage.code, new StageWorkflowState(0, steps));
             }
@@ -1143,16 +1323,35 @@ public class MappingServer {
         String question;
         String status;
         String answer;
+        int minAnswerLength;
 
-        ReqStepState(String key, String name, String question, String status) {
+        ReqStepState(String key, String name, String question, String status, int minAnswerLength) {
             this.key = key;
             this.name = name;
             this.question = question;
             this.status = status;
+            this.minAnswerLength = minAnswerLength;
         }
     }
 
-    private record ReqStepDef(String key, String name, String question) implements Serializable {
+    private record ReqStepDef(
+            String key,
+            String name,
+            String question,
+            int minAnswerLength,
+            String conditionExpr
+    ) implements Serializable {
+        ReqStepDef(String key, String name, String question) {
+            this(key, name, question, 12, "");
+        }
+
+        ReqStepDef(String key, String name, String question, int minAnswerLength) {
+            this(key, name, question, minAnswerLength, "");
+        }
+
+        ReqStepDef(String key, String name, String question, String conditionExpr) {
+            this(key, name, question, 12, conditionExpr);
+        }
     }
 
     private record StageDef(String code, String name, String interactionStyle, String description) {
@@ -1168,5 +1367,8 @@ public class MappingServer {
             List<ScoredRef> methods,
             Trace trace
     ) {
+    }
+
+    private record HealthResult(boolean up, String reason, String checkedAt) {
     }
 }

@@ -1,0 +1,42 @@
+schema: spec-driven
+context: |
+  项目名称：paradigm-sys
+  业务领域：SDLC 方法论推荐与分阶段需求澄清。
+
+  运行模式：
+  - Standalone 模式：`standalone/MappingServer.java` + 静态前端资源，仅依赖 JDK 17。
+  - Spring Boot 模式：`src/main/java/...`，采用 REST API + JPA 仓储层。
+
+  核心 API：
+  - `POST /api/v1/mapping/recommend`
+  - `POST /api/v1/sessions/start`
+  - `POST /api/v1/sessions/{sessionId}/message`
+  - `GET /health`
+
+  数据与依赖约束：
+  - Spring 模式依赖 PostgreSQL 及映射关系表。
+  - Standalone 模式使用内存种子数据，并将会话持久化到本地二进制文件。
+  - 可选接入 OpenRouter，通过 `OPENROUTER_API_KEY` 控制。
+
+  工程约束：
+  - Java 17 为基线版本。
+  - 优先采用增量式变更，避免破坏既有 API 合约。
+  - 在可行前提下保持 standalone 与 spring 两种模式的行为一致。
+
+rules:
+  proposal:
+    - 明确说明影响范围：standalone、spring，或两者同时影响。
+    - 当请求/响应结构变更时，必须说明 API 兼容性影响与迁移说明。
+    - 必须列出非目标（Non-goals），防止范围蔓延。
+  design:
+    - 必须包含“现状（Current state）”与“目标态（Target state）”章节，并锚定现有代码文件。
+    - 说明失败模式、回退行为，以及环境变量影响。
+    - 涉及持久化变更时，必须描述数据模型与向后兼容策略。
+  tasks:
+    - 按依赖关系排序任务，且每个任务都应可独立验证。
+    - 必须包含可执行的验证步骤（如 `curl /health`、API 冒烟测试）。
+    - 纯重构任务与行为变更任务应明确拆分。
+  spec:
+    - 规范性要求使用 RFC-2119 表述（MUST/SHOULD/MAY）。
+    - 区分功能行为、非功能约束与可观测性要求。
+    - 定义接口时必须包含请求结构、响应结构与错误条件。
